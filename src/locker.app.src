@@ -1,0 +1,12 @@
+{application, locker,
+ [
+  {description, "A lock application for Erlang clusters."},
+  {vsn, "0.0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { locker_app, []}},
+  {env, []}
+ ]}.
