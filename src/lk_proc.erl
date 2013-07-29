@@ -12,12 +12,16 @@
 
 -record(state, {
           abs_size = 3 :: pos_integer(),
-          consumed_locks = 0 :: pos_integer(),
+          consumed_locks = 0 :: non_neg_integer(),
           lock_holders = [] :: [{pid(), reference()}]
          }).
 
 %% ===================================================================
 %%  API
+%% ===================================================================
+
+%% ===================================================================
+%%  gen_server callbacks
 %% ===================================================================
 
 init([]) ->
@@ -27,13 +31,13 @@ init([]) ->
 handle_call(set_lock, _From, #state{abs_size=N, consumed_locks=M}=S)
   when N =< M ->
     {reply, {error, overburdened}, S};
-handle_call(set_lock, From, #state{abs_size=N, consumed_locks=M}=S)
+handle_call(set_lock, {Pid, _Tag}=_From, #state{abs_size=N, consumed_locks=M}=S)
   when N > M ->
-    case proplists:get_value(From, S#state.lock_holders) of
+    case proplists:get_value(Pid, S#state.lock_holders) of
         undefined ->
-            MonRef = erlang:monitor(process, From),
+            MonRef = erlang:monitor(process, Pid),
             NewState = S#state{consumed_locks = M+1,
-                               lock_holders = [{From, MonRef} | S#state.lock_holders]},
+                               lock_holders = [{Pid, MonRef} | S#state.lock_holders]},
             {reply, ok, NewState};
         _MonRef ->
             {reply, {error, already_held}, S}
@@ -42,14 +46,14 @@ handle_call(set_lock, From, #state{abs_size=N, consumed_locks=M}=S)
 %% lock deleting
 handle_call(del_lock, _From, #state{consumed_locks=0}=S) ->
     {reply, {error, not_held}, S};
-handle_call(del_lock, From, #state{consumed_locks=M}=S)
+handle_call(del_lock, {Pid, _Tag}=_From, #state{consumed_locks=M}=S)
   when M > 0 ->
-    case proplists:get_value(From, S#state.lock_holders) of
+    case proplists:get_value(Pid, S#state.lock_holders) of
         undefined ->
             {reply, {error, not_held}, S};
         MonRef ->
             _DidFlush = erlang:demonitor(MonRef, [flush]),
-            Holders = proplists:delete(From, S#state.lock_holders),
+            Holders = proplists:delete(Pid, S#state.lock_holders),
             {reply, ok, S#state{consumed_locks=M-1, lock_holders=Holders}}
     end;
 
@@ -94,6 +98,9 @@ code_change(_OldVsn, #state{}=_S, _Extra) ->
 
 protocol_test_() ->
     Self = self(),
+    Tag = tag,
+    From = {Self, Tag},
+
     S = #state{},
     DefaultSize = S#state.abs_size,
 
@@ -107,19 +114,19 @@ protocol_test_() ->
         ?_assertMatch({reply, {error, overburdened}, Overburdened},
                       handle_call(set_lock, from, Overburdened)),
         ?_assertMatch({reply, {error, already_held}, LockHolder},
-                      handle_call(set_lock, Self, LockHolder)),
+                      handle_call(set_lock, From, LockHolder)),
         ?_assertMatch({reply, ok, #state{consumed_locks=1, lock_holders=[{Self, _}]}},
-                      handle_call(set_lock, Self, S))
+                      handle_call(set_lock, From, S))
        ]
      },
      { "deleting locks",
        [
         ?_assertMatch({reply, {error, not_held}, S},
-                      handle_call(del_lock, Self, S)),
+                      handle_call(del_lock, From, S)),
         ?_assertMatch({reply, {error, not_held}, LockHolder},
-                      handle_call(del_lock, not_holder, LockHolder)),
+                      handle_call(del_lock, {not_holder, Tag}, LockHolder)),
         ?_assertMatch({reply, ok, S},
-                      handle_call(del_lock, Self, LockHolder)),
+                      handle_call(del_lock, From, LockHolder)),
 
         ?_assertMatch({noreply, S},
                       handle_info({'DOWN', MonRef, process, Self, info}, S)),

@@ -2,17 +2,12 @@
 
 -export([
          set/1,
-         set/2,
          del/1,
          set_size/2,
          get_size/1
         ]).
 
 -type lk_opts() :: any().
-
--export_type([
-              lk_opts/0
-             ]).
 
 %% ===================================================================
 %%  API
@@ -22,25 +17,29 @@
 set(Name) ->
     set(Name, []).
 
--spec set(Name :: any(), Options :: [lk_opts()]) -> undefined.
-set(_Name, _Options) ->
-    undefined.
-
 -spec del(Name :: any()) -> undefined.
-del(_Name) ->
-    undefined.
+del(Name) ->
+    {ok, Pid} = locker_sup:lk(Name),
+    gen_server:call(Pid, del_lock).
 
--spec set_size(Name :: any(), Size :: pos_integer()) -> undefined.
-set_size(_Name, Size) when Size > 0 ->
-    undefined.
+-spec set_size(Name :: any(), Size :: pos_integer()) -> ok.
+set_size(Name, Size) when Size > 0 ->
+    {ok, Pid} = locker_sup:lk(Name),
+    gen_server:call(Pid, {set_size, Size}).
 
--spec get_size(Name :: any()) -> 0.
-get_size(_Name) ->
-    0.
+-spec get_size(Name :: any()) -> {ok, non_neg_integer()}.
+get_size(Name) ->
+    {ok, Pid} = locker_sup:lk(Name),
+    gen_server:call(Pid, get_size).
 
 %% ===================================================================
 %%  Internal Functions
 %% ===================================================================
+
+-spec set(Name :: any(), Options :: [lk_opts()]) -> undefined.
+set(Name, _Options) ->
+    {ok, Pid} = locker_sup:lk(Name),
+    gen_server:call(Pid, set_lock).
 
 %% ===================================================================
 %%  Tests
@@ -49,21 +48,35 @@ get_size(_Name) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
-set_test_() ->
-    [
-     ?_assertMatch(undefined, set(name)),
-     ?_assertMatch(undefined, set(name, []))
-    ].
+setup() ->
+    ok = application:start(locker).
 
-del_test_() ->
-    [
-     ?_assertMatch(undefined, del(name))
-    ].
+cleanup(_) ->
+    ok = application:stop(locker).
 
-size_test_() ->
-    [
-     ?_assertMatch(undefined, set_size(name, 1)),
-     ?_assertMatch(0,         get_size(name))
-    ].
+integration_test_() ->
+    {setup,
+     fun setup/0,
+     fun cleanup/1,
+     [
+      { "set / del tests",
+        [
+         ?_assertMatch(ok, set(name)),
+         ?_assertMatch({error, already_held}, set(name, [])),
+         ?_assertMatch(ok, del(name)),
+         ?_assertMatch({error, not_held}, del(name)),
+         ?_assertMatch(ok, set(name)),
+         ?_assertMatch({error, already_held}, set(name))
+        ]
+      },
+      { "size tests",
+        [
+         ?_assertMatch({ok, 3}, get_size(name)),
+         ?_assertMatch(ok,      set_size(name, 1)),
+         ?_assertMatch({ok, 1}, get_size(name))
+        ]
+      }
+     ]
+    }.
 
 -endif.
