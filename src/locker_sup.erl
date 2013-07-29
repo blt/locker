@@ -50,12 +50,6 @@ sanity_test_() ->
      ?_assertMatch(global, ?SCOPE)
     ].
 
-lock_retrieve_test_() ->
-    [
-     ?_assertMatch({ok, _Pid}, lk(locklock)),
-     ?_assertMatch({ok, _Pid}, lk(locklock))
-    ].
-
 callback_test_() ->
     [
      ?_assertMatch({ok, {{one_for_one, _, _}, []}}, init([]))

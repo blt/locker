@@ -48,17 +48,17 @@ set(Name, _Options) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
-setup() ->
-    ok = application:start(locker).
-
-cleanup(_) ->
-    ok = application:stop(locker).
-
 integration_test_() ->
     {setup,
-     fun setup/0,
-     fun cleanup/1,
+     fun() -> _ = application:start(locker) end,
+     fun(_) -> _ = application:stop(locker) end,
      [
+      { "supervisor lock retrieval",
+        [
+         ?_assertMatch({ok, _Pid}, locker_sup:lk(locklock)),
+         ?_assertMatch({ok, _Pid}, locker_sup:lk(locklock))
+        ]
+      },
       { "set / del tests",
         [
          ?_assertMatch(ok, set(name)),
