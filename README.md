@@ -9,17 +9,13 @@ library is currently in flux. I'm calling the 'resource lock' a 'lock' and the
 'locks taken out' for that resource is 'magnitude' or 'size'. As this is early
 days, please to anticipate the vocabulary changing. Suggestions appreciated.
 
-Three kinds of locks are intended:
+Two kinds of locks are implemented:
 
   * process associated :: a lock is set by a process and is destroyed only when
     the process gives it up OR the associated process dies
-  * time-based :: a lock is set and given a timeout value, beyond which it is
-    destroyed
   * time/process hybrid :: a lock is set by a process and is destroyed when the
-    process give it up OR the timeout limit is reached but NOT if the associated
+    process gives it up OR the timeout limit is reached XOR if the associated
     process dies
-
-Only the first, 'process associated' is implemented in this release.
 
 ## Example
 

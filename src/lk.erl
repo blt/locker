@@ -7,7 +7,7 @@
          get_size/1
         ]).
 
--type lk_opts() :: any().
+-type lk_opts() :: {timeout, pos_integer()}.
 
 %% ===================================================================
 %%  API
@@ -16,6 +16,11 @@
 -spec set(Name :: any()) -> undefined.
 set(Name) ->
     set(Name, []).
+
+-spec set(Name :: any(), Options :: [lk_opts()]) -> undefined.
+set(Name, _Options) ->
+    {ok, Pid} = locker_sup:lk(Name),
+    gen_server:call(Pid, {set_lock, infinity}).
 
 -spec del(Name :: any()) -> undefined.
 del(Name) ->
@@ -35,11 +40,6 @@ get_size(Name) ->
 %% ===================================================================
 %%  Internal Functions
 %% ===================================================================
-
--spec set(Name :: any(), Options :: [lk_opts()]) -> undefined.
-set(Name, _Options) ->
-    {ok, Pid} = locker_sup:lk(Name),
-    gen_server:call(Pid, set_lock).
 
 %% ===================================================================
 %%  Tests
