@@ -17,7 +17,8 @@ dialyze: app.plt compile
 		-Werror_handling -Wrace_conditions -Wno_undefined_callbacks
 
 test: compile
-	@${REBAR} eunit skip_deps=true verbose=0
+	@$(REBAR) eunit skip_deps=true verbose=0
+	ct_run -dir itest -pa ebin -verbosity 0 -logdir logs
 
 validate: dialyze test
 
