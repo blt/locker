@@ -1,29 +1,34 @@
-# (WORK IN PROGRESS) locker - an Erlang per-cluster lock application
+# locker - an Erlang per-cluster lock application
 
 [![Build Status](https://travis-ci.org/blt/locker.png)](https://travis-ci.org/blt/locker)
 
-This is a simple resource locking OTP application for an Erlang cluster.
-Resources are identified by a name (`:: term()`) and may have more than one lock
-taken out for that resource of any of the provided types. The vocabulary of this
-library is currently in flux. I'm calling the 'resource lock' a 'lock' and the
-'locks taken out' for that resource is 'magnitude' or 'size'. As this is early
-days, please to anticipate the vocabulary changing. Suggestions appreciated.
+This is a resource locking OTP application for an Erlang cluster. Resources are
+identified by a name (`:: term()`) and may have more than one lock taken out for
+that resource of any of the provided types. Locks have an associated 'size' and
+an optional timeout. By default, locks are of size 3, meaning that three
+processes may 'set' the resource lock simultaneously. A process may not set the
+same lock more than once. Lock sets are bound to the lifetime of the setting
+process: a process crash has no potential to cause a deadlock.
 
-Three kinds of locks are intended:
+The function `lk:set/1` sets a lock with an indefinite timeout. The function
+`lk:set/2`, supplied with the `{timeout, pos_integer()}` option, will set a lock
+with a timeout, measured in milliseconds. When the timeout is indefinite a lock
+may be unset only by:
 
-  * process associated :: a lock is set by a process and is destroyed only when
-    the process gives it up OR the associated process dies
-  * time-based :: a lock is set and given a timeout value, beyond which it is
-    destroyed
-  * time/process hybrid :: a lock is set by a process and is destroyed when the
-    process give it up OR the timeout limit is reached but NOT if the associated
-    process dies
+  * the setting process calling `lk:del/1` or
+  * the setting process crashing.
 
-Only the first, 'process associated' is implemented in this release.
+If the timeout is not indefinite, a lock may be unset by the above and,
+additionally, by:
+
+  * the timeout value being eclipsed.
+
+Setting processes are not notified by `locker` if a timeout unsets a lock set by
+processes.
 
 ## Example
 
-Given two nodes on a host named 'walden' the node `alpha` running the `locker` library:
+Given two nodes on a host named 'walden' the node `alpha` running the `locker`:
 
 ```
 > erl -sname alpha -setcookie monster -pa ebin
@@ -82,10 +87,33 @@ Taking pity on `alpha` we'll use `beta` to bump the lock size up
 ok
 ```
 
-and, just as planned, `alpha` will be able to set the lock
+and, just as planned, `alpha` will be able to set the lock, which we'll do with
+a timeout of 60 seconds
 
 ```
-(alpha@walden)6> lk:set(small_lock).
+(alpha@walden)6> lk:set(small_lock, [{timeout, timer:seconds(60}]).
+ok
+```
+
+Promptly, we'll start a third node called `gamma`, join it to the cluster and
+try to take out `small_lock`
+
+```
+> erl -sname gamma -setcookie monster -pa ebin
+Erlang R15B03 (erts-5.9.3) [source] [64-bit] [smp:8:8] [async-threads:0] [hipe]
+[kernel-poll:false]
+
+Eshell V5.9.3  (abort with ^G)
+(gamma@walden)1> net_adm:world_list([walden]).
+[alpha@walden,beta@walden,gamma@walden]
+(gamma@walden)2> lk:set(small_lock).
+{error, overburdened}
+```
+
+After a greater than 60 second wait
+
+```
+(gamma@walden)3> lk:set(small_lock).
 ok
 ```
 
@@ -96,13 +124,13 @@ ok
 While this application took much of its initial inspiration from the `global`
 module, it differentiates itself by providing:
 
- * more than lock semantic category (aspirational)
- * 'magnitudes' per resource lock
- * fine-grained control over retry limits (aspirational)
+ * variable 'size' per resource lock,
+ * no automatic lock retries,
+ * process bound lock sets and
+ * expiring lock sets.
 
 Resource lock names are any term, unlike `global` locks which are a bit more
-complicated. This simplifications requires that all lock requests are implicitly
-tied to the caller's PID.
+complicated. All locks are implicitly tied to the caller's PID.
 
 ### Are the locks volatile?
 
@@ -115,14 +143,14 @@ keep `locker` running at all times but makes no attempt to do so on its own.
 
 ### What are the performance implications of the library?
 
-I haven't the foggiest.
+Fast Enough for my use-case. :)
+
+More seriously though, I haven't written automatic benchmarks for this library
+and if you _do_ write such a thing I'd love to see it.
 
 ## Future Work
 
-1. Only the process-based semantic category for locks is currently implemented.
-   The remaining two will be included as well.
-1. OTP admits some notifications of netsplits for applications. `locker` makes
-   no attempts to use this information as yet, but should and will.
+1. `locker` does not have a distributed stress test suite. It should.
 
 ## LICENSE
 

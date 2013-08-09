@@ -2,12 +2,13 @@
 
 -export([
          set/1,
+         set/2,
          del/1,
          set_size/2,
          get_size/1
         ]).
 
--type lk_opts() :: any().
+-type lk_opts() :: {timeout, timer:time() | infinity}.
 
 %% ===================================================================
 %%  API
@@ -16,6 +17,12 @@
 -spec set(Name :: any()) -> undefined.
 set(Name) ->
     set(Name, []).
+
+-spec set(Name :: any(), Options :: [lk_opts()]) -> undefined.
+set(Name, Options) ->
+    {ok, Pid} = locker_sup:lk(Name),
+    {timeout, Timeout} = timeout(Options),
+    gen_server:call(Pid, {set_lock, Timeout}).
 
 -spec del(Name :: any()) -> undefined.
 del(Name) ->
@@ -36,10 +43,14 @@ get_size(Name) ->
 %%  Internal Functions
 %% ===================================================================
 
--spec set(Name :: any(), Options :: [lk_opts()]) -> undefined.
-set(Name, _Options) ->
-    {ok, Pid} = locker_sup:lk(Name),
-    gen_server:call(Pid, set_lock).
+-spec timeout([lk_opts()]) -> {timeout, pos_integer() | infinity}.
+timeout(Options) ->
+    case proplists:get_value(timeout, Options, infinity) of
+        infinity ->
+            {timeout, infinity};
+        I when I > 0 ->
+            {timeout, I}
+    end.
 
 %% ===================================================================
 %%  Tests
@@ -66,7 +77,15 @@ integration_test_() ->
          ?_assertMatch(ok, del(name)),
          ?_assertMatch({error, not_held}, del(name)),
          ?_assertMatch(ok, set(name)),
-         ?_assertMatch({error, already_held}, set(name))
+         ?_assertMatch({error, already_held}, set(name)),
+         ?_assertMatch(ok, del(name)),
+
+         ?_assertMatch(ok, set(name, [{timeout, timer:seconds(60)}])),
+         ?_assertMatch({error, already_held}, set(name)),
+         ?_assertMatch(ok, del(name)),
+         ?_assertMatch(ok, set(name, [{timeout, 1}])),
+         ?_assertMatch(ok, set(name)),
+         ?_assertMatch(ok, del(name))
         ]
       },
       { "size tests",
