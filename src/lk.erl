@@ -8,7 +8,7 @@
          get_size/1
         ]).
 
--type lk_opts() :: {timeout, pos_integer() | infinity}.
+-type lk_opts() :: {timeout, timer:time() | infinity}.
 
 %% ===================================================================
 %%  API
