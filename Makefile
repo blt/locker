@@ -1,5 +1,6 @@
-REBAR=`which rebar || which ./rebar`
+REBAR=`which rebar`
 DIALYZER=`which dialyzer`
+RELX=`which relx`
 
 all: deps compile
 
@@ -21,6 +22,12 @@ test: compile
 	ct_run -dir itest -pa ebin -verbosity 0 -logdir logs
 
 validate: dialyze test
+
+release: clean validate
+	@$(RELX)
+
+repl:
+	_rel/bin/locker
 
 clean:
 	@$(RM) -rf deps/

@@ -2,6 +2,7 @@
 ##
 *.beam
 *.app
+_rel
 
 ## dependencies
 ##
