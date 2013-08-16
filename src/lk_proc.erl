@@ -36,10 +36,10 @@ handle_call({set_lock, _Timeout}, _From, #state{abs_size=N, consumed_locks=M}=S)
 handle_call({set_lock, Timeout}, {Pid, _Tag}=_From,
             #state{abs_size=N, consumed_locks=M}=S)
   when N > M, Timeout > 0 ->
-    TRef = create_timer(Timeout, Pid),
     case proplists:get_value(Pid, S#state.lock_holders) of
         undefined ->
             MonRef = erlang:monitor(process, Pid),
+            TRef = create_timer(Timeout, Pid),
             NewState = S#state{consumed_locks = M+1,
                                lock_holders = [{Pid, {MonRef, TRef}} |
                                                S#state.lock_holders]},
@@ -47,27 +47,6 @@ handle_call({set_lock, Timeout}, {Pid, _Tag}=_From,
         _MonRef ->
             {reply, {error, already_held}, S}
     end;
-
-%%% There's a race-condition here.
-%%%
-%%%   * T0 :: the process is busy with another message
-%%%   * T1 :: the process receives a timeout message
-%%%   * T2 :: the process receives a del_lock message
-%%%   * T3 :: the process stops being busy, retreiving del_lock message
-%%%
-%%% There's is no similar issue if T1 and T2 are inverted; erlang:demonitor/2
-%%% has a 'flush' option. Simply flushing the del_lock that arrives at T2 in a
-%%% like manner is not acceptable as the message may have arrived _long_ after
-%%% the timeout but still be the first del_lock in the list.
-%%%
-%%% I suppose the thing here is to say that if clients are setting timeouts they
-%%% must be aware that it's possible they'll potentially lose their lock to the
-%%% timeout, even if only just slightly.
-handle_call({timeout, Pid}, _From, #state{consumed_locks=M}=S) when M > 0 ->
-    {MonRef, _TRef} = proplists:get_value(Pid, S#state.lock_holders),
-    _DidFlush = erlang:demonitor(MonRef, [flush]),
-    Holders = proplists:delete(Pid, S#state.lock_holders),
-    {reply, ok, S#state{consumed_locks=M-1, lock_holders=Holders}};
 
 %% lock deleting
 handle_call(del_lock, _From, #state{consumed_locks=0, lock_holders=[]}=S) ->
@@ -90,13 +69,27 @@ handle_call(get_size, _From, #state{abs_size=Int}=S) ->
 handle_call({set_size, Int}, _From, #state{}=S) when Int > 0 ->
     {reply, ok, S#state{abs_size=Int}}.
 
+%% timeouts
+handle_cast({timeout, _Pid}, #state{consumed_locks=0}=S) ->
+    {noreply, S};
+handle_cast({timeout, Pid}, #state{consumed_locks=M}=S) when M > 0 ->
+    case proplists:get_value(Pid, S#state.lock_holders) of
+        undefined ->
+            {noreply, S};
+        {MonRef, _TRef} ->
+            _DidFlush = erlang:demonitor(MonRef, [flush]),
+            Holders = proplists:delete(Pid, S#state.lock_holders),
+            {noreply, S#state{consumed_locks=M-1, lock_holders=Holders}}
+    end;
+
 handle_cast(_Request, #state{}=S) ->
     {noreply, S}.
 
 handle_info({'DOWN', _MonRef, process, _Pid, _Info},
             #state{consumed_locks=0, lock_holders=[]}=S) ->
     {noreply, S};
-handle_info({'DOWN', MonRef, process, Pid, _Info}, #state{consumed_locks=M}=S) ->
+handle_info({'DOWN', MonRef, process, Pid, _Info}, #state{consumed_locks=M}=S)
+  when M > 0->
     case proplists:get_value(Pid, S#state.lock_holders) of
         undefined ->
             {noreply, S};
@@ -120,8 +113,8 @@ code_change(_OldVsn, #state{}=_S, _Extra) ->
 -spec create_timer(pos_integer(), pid()) -> tref().
 create_timer(infinity, _Pid) ->
     infinity;
-create_timer(Timeout, Pid) when is_integer(Timeout) ->
-    {ok, TRef} = timer:apply_after(Timeout, gen_server, call,
+create_timer(Timeout, Pid) when is_integer(Timeout), is_pid(Pid) ->
+    {ok, TRef} = timer:apply_after(Timeout, gen_server, cast,
                                    [self(), {timeout, Pid}]),
     TRef.
 
@@ -180,8 +173,8 @@ protocol_test_() ->
         ?_assertMatch({reply, ok, S},
                       handle_call(del_lock, From, LockHolder)),
 
-        ?_assertMatch({reply, ok, S},
-                      handle_call({timeout, Self}, From, LockHolder)),
+        ?_assertMatch({noreply, S},
+                      handle_cast({timeout, Self}, LockHolder)),
 
         ?_assertMatch({noreply, S},
                       handle_info({'DOWN', MonRef, process, Self, info}, S)),
