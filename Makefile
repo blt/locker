@@ -19,7 +19,7 @@ dialyze: app.plt compile
 
 test: compile
 	@$(REBAR) eunit skip_deps=true verbose=0
-	ct_run -dir itest -pa ebin -verbosity 0 -logdir logs
+	ct_run -dir itest -pa ebin -verbosity 0 -logdir logs -erl_args +K true +A 10
 
 validate: dialyze test
 
