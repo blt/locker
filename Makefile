@@ -33,4 +33,4 @@ clean:
 	@$(RM) -rf deps/
 	@$(REBAR) clean
 
-.PHONY: all test clean validate dialyze deps
+.PHONY: all test clean validate dialyze deps ct
