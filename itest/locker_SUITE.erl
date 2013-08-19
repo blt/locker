@@ -55,7 +55,7 @@ loop_fsm(init, Config) ->
 loop_fsm(take_lock_timeout, Resource) ->
     case lk:set(Resource, [{timeout, random:uniform(?SLEEPWAIT)}]) of
         ok ->
-            NextStates = [timed_del_lock, timed_sit_on_lock],
+            NextStates = [timed_del_lock, timed_del_lock_cooldown, timed_sit_on_lock],
             loop_fsm(choose(NextStates, 2), Resource);
         {error, overburdened} ->
             loop_fsm({wait_for_resource, 10}, Resource)
@@ -63,7 +63,7 @@ loop_fsm(take_lock_timeout, Resource) ->
 loop_fsm(take_lock, Resource) ->
     case lk:set(Resource) of
         ok ->
-            NextStates = [del_lock, sit_on_lock],
+            NextStates = [del_lock, del_lock_cooldown, sit_on_lock],
             loop_fsm(choose(NextStates, 2), Resource);
         {error, overburdened} ->
             loop_fsm({wait_for_resource, 10}, Resource)
@@ -76,11 +76,11 @@ loop_fsm({wait_for_resource, N}, Resource) ->
     loop_fsm({wait_for_resource, N-1}, Resource);
 loop_fsm(timed_sit_on_lock, Resource) ->
     _ = wait(),
-    NextStates = [timed_del_lock, timed_sit_on_lock],
+    NextStates = [timed_del_lock, timed_del_lock_cooldown, timed_sit_on_lock],
     loop_fsm(choose(NextStates, 2), Resource);
 loop_fsm(sit_on_lock, Resource) ->
     _ = wait(),
-    NextStates = [del_lock, sit_on_lock],
+    NextStates = [del_lock, del_lock_cooldown, sit_on_lock],
     loop_fsm(choose(NextStates, 2), Resource);
 loop_fsm(del_unheld, Resource) ->
     {error, not_held} = lk:del(Resource),
@@ -92,16 +92,21 @@ loop_fsm(timed_del_lock, Resource) ->
         {error, not_held} ->
             ok
     end;
+loop_fsm(timed_del_lock_cooldown, Resource) ->
+    case lk:del(Resource, [{cooldown, ?SLEEPWAIT}]) of
+        ok ->
+            ok;
+        {error, not_held} ->
+            ok
+    end;
 loop_fsm(del_lock, Resource) ->
-    ok = lk:del(Resource).
+    ok = lk:del(Resource);
+loop_fsm(del_lock_cooldown, Resource) ->
+    ok = lk:del(Resource, [{cooldown, ?SLEEPWAIT}]).
 
 %% ===================================================================
 %%  Internal Functions
 %% ===================================================================
-
-%% slaves() ->
-%%     Names = [alpha, beta, gamma, delta, epsilon],
-%%     [ Node || {ok, Node} <- lists:map(fun ct_slave:start/1, Names) ].
 
 choose(L, Len) ->
     lists:nth(random:uniform(Len), L).
