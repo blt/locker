@@ -156,3 +156,7 @@ and if you _do_ write such a thing I'd love to see it.
 
 `locker` is provided under the MIT License. Please see `LICENSE` in the root of
 this project for details.
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/blt/locker/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
